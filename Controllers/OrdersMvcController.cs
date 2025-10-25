@@ -4,7 +4,7 @@ using TSoftApiClient.Services;
 namespace TSoftApiClient.Controllers
 {
     /// <summary>
-    /// Sipariş sayfaları için MVC Controller - PAGINATION OPTIMIZED
+    /// Sipariş sayfaları için MVC Controller - PAGINATION FIXED
     /// </summary>
     public class OrdersMvcController : Controller
     {
@@ -21,7 +21,7 @@ namespace TSoftApiClient.Controllers
         }
 
         /// <summary>
-        /// Sipariş listesi sayfası - Pagination ile optimize edilmiş
+        /// Sipariş listesi sayfası - Pagination FIXED
         /// </summary>
         [Route("/Orders")]
         [Route("/OrdersMvc")]
@@ -31,7 +31,15 @@ namespace TSoftApiClient.Controllers
             {
                 _logger.LogInformation("📦 Fetching orders - Page: {Page}, Limit: {Limit}", page, limit);
 
-                var result = await _tsoftService.GetOrdersAsync(limit: limit);
+                // ✅ FIXED: Page ve offset parametrelerini gönder
+                var filters = new Dictionary<string, string>
+                {
+                    ["page"] = page.ToString(),
+                    ["offset"] = ((page - 1) * limit).ToString(),
+                    ["start"] = ((page - 1) * limit).ToString()
+                };
+
+                var result = await _tsoftService.GetOrdersAsync(limit: limit, filters: filters);
 
                 _logger.LogInformation("📊 Orders API result: Success={Success}, DataCount={Count}",
                     result.Success,
@@ -49,12 +57,10 @@ namespace TSoftApiClient.Controllers
                 _logger.LogInformation("✅ Orders loaded successfully: {Count} orders", orders.Count);
 
                 // ⚡ SMART ORDER DETAILS FETCHING
-                // Only try if we haven't confirmed API doesn't work
                 if (_detailsApiWorking && orders.Count > 0)
                 {
                     _logger.LogInformation("🔍 Attempting to fetch order details...");
 
-                    // Test with first order to see if API works
                     var testOrder = orders.First();
                     if (int.TryParse(testOrder.OrderId, out var testOrderId))
                     {
@@ -62,23 +68,17 @@ namespace TSoftApiClient.Controllers
 
                         if (!testResult.Success)
                         {
-                            // API doesn't work - disable future attempts
                             _detailsApiWorking = false;
                             _logger.LogWarning("⚠️ Order details API not available. Disabling future attempts.");
-                            _logger.LogWarning("   Reason: {Error}",
-                                testResult.Message?.FirstOrDefault()?.Text?.FirstOrDefault() ?? "Unknown");
-
                             ViewBag.Warning = "Sipariş detayları API'sine erişim yok. Ürün sayısı ve paketleme durumu görüntülenemiyor.";
                         }
                         else if (testResult.Data != null && testResult.Data.Count > 0)
                         {
-                            // API works! Fetch details for all orders
                             _logger.LogInformation("✅ Order details API works! Fetching for all orders...");
 
                             var successCount = 0;
                             var failCount = 0;
 
-                            // Paralel çek ama max 5 aynı anda (T-Soft API'si yavaş)
                             var semaphore = new System.Threading.SemaphoreSlim(5);
 
                             var detailTasks = orders.Select(async order =>
@@ -95,7 +95,6 @@ namespace TSoftApiClient.Controllers
                                             order.OrderDetails = detailsResult.Data;
                                             order.ItemCount = detailsResult.Data.Count;
 
-                                            // Şehir bilgisi yoksa detaydan al
                                             if (string.IsNullOrEmpty(order.City) && string.IsNullOrEmpty(order.ShippingCity))
                                             {
                                                 var firstDetail = detailsResult.Data.FirstOrDefault();
@@ -103,7 +102,6 @@ namespace TSoftApiClient.Controllers
                                                 order.ShippingCity = firstDetail?.ShippingCity;
                                             }
 
-                                            // Paketleme durumu yoksa detaydan al
                                             if (string.IsNullOrEmpty(order.SupplyStatus))
                                             {
                                                 var firstDetail = detailsResult.Data.FirstOrDefault();
@@ -154,7 +152,7 @@ namespace TSoftApiClient.Controllers
                 // Pagination info
                 ViewBag.CurrentPage = page;
                 ViewBag.PageSize = limit;
-                ViewBag.HasMore = orders.Count >= limit; // Eğer tam limit kadar geldi ise daha fazlası olabilir
+                ViewBag.HasMore = orders.Count >= limit;
 
                 return View("~/Views/Orders/Index.cshtml", orders);
             }

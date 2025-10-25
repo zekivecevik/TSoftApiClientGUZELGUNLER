@@ -29,7 +29,7 @@
 
 <!-- Stats Bar -->
 <div class="stats-bar">
-    <div class="stats-container" style="justify-content: flex-start; overflow-x: auto;">
+    <div class="stats-container" style="justify-content: center; overflow-x: auto; flex-wrap: wrap; gap: 16px;">
 
         <!-- Sipariş Stats -->
         <div class="stat-mini">
@@ -293,7 +293,7 @@
             }
 
             <div style="display: flex; flex-direction: column; gap: 12px;">
-                @foreach (var order in recentOrders.Take(5))
+                @foreach (var order in recentOrders)
                 {
                     <div style="padding: 12px; background: var(--bg-main); border-radius: 8px; border: 1px solid var(--border);">
                         <div style="display: flex; justify-content: space-between; margin-bottom: 6px;">

@@ -26,12 +26,10 @@ namespace TSoftApiClient.Controllers
             {
                 _logger.LogInformation("⚡ Loading ULTRA FAST Dashboard...");
 
-                // ========== CRITICAL: ONLY 100 RECORDS FOR BETTER DATA! ==========
-                var productsTask = _tsoftService.GetProductsAsync(limit: 100);    // ⚡ 100 for better stats!
-                var ordersTask = _tsoftService.GetOrdersAsync(limit: 100);        // ⚡ 100 for graph data!
-                var customersTask = _tsoftService.GetCustomersAsync(limit: 20);  // ⚡ 20 only!
+                var productsTask = _tsoftService.GetProductsAsync(limit: 100);
+                var ordersTask = _tsoftService.GetOrdersAsync(limit: 600);  // ✅ 300 sipariş - optimal!
+                var customersTask = _tsoftService.GetCustomersAsync(limit: 20);
 
-                // Skip categories - too slow!
                 var categoriesTask = Task.FromResult(new Models.TSoftApiResponse<List<Models.Category>>
                 {
                     Success = true,
@@ -52,7 +50,6 @@ namespace TSoftApiClient.Controllers
 
                 var today = DateTime.Now.Date;
 
-                // ========== MINIMAL STATS ==========
                 ViewBag.TotalOrders = orderList.Count;
                 ViewBag.OrdersToday = orderList.Count(o => ParseDate(o.OrderDate) >= today);
                 ViewBag.OrdersThisWeek = orderList.Count(o => ParseDate(o.OrderDate) >= today.AddDays(-7));
@@ -72,7 +69,6 @@ namespace TSoftApiClient.Controllers
                 ViewBag.ActiveProducts = productList.Count(p => p.IsActive == "1" || string.IsNullOrEmpty(p.IsActive));
                 ViewBag.PassiveProducts = productList.Count - ViewBag.ActiveProducts;
 
-                // Fast stock count
                 int totalStock = 0;
                 int lowStockCount = 0;
                 int outOfStockCount = 0;
@@ -92,7 +88,6 @@ namespace TSoftApiClient.Controllers
                 ViewBag.OutOfStockCount = outOfStockCount;
                 ViewBag.TotalStockValue = 0;
 
-                // ✅ FIXED: Kritik stok ürünleri - 10 tane göster
                 ViewBag.LowStockProducts = productList
                     .Where(p => int.TryParse(p.Stock, out var s) && s > 0 && s <= 10)
                     .Take(10)
@@ -103,24 +98,51 @@ namespace TSoftApiClient.Controllers
                 ViewBag.CompletedOrders = orderList.Count(o => o.OrderStatusId == "3");
                 ViewBag.CancelledOrders = orderList.Count(o => o.OrderStatusId == "4");
 
-                // ========== FIXED: REAL LAST 5 DAYS CHART ==========
+                // ========== FIXED: REAL LAST 30 & 5 DAYS CHART ==========
+                var ordersByDate = orderList
+                    .GroupBy(o => ParseDate(o.OrderDate).Date)
+                    .Where(g => g.Key != DateTime.MinValue.Date)
+                    .ToDictionary(g => g.Key, g => g.ToList());
+
+                _logger.LogInformation($"📊 Order dates available: {string.Join(", ", ordersByDate.Keys.Select(d => d.ToString("dd.MM")))}");
+
+                // ✅ FIXED: Son 5 günü oluştur (boş günler dahil!)
                 var last5Days = new List<(DateTime Date, decimal Revenue, int OrderCount)>();
+
                 for (int i = 4; i >= 0; i--)
                 {
-                    var date = today.AddDays(-i);
-                    var dayOrders = orderList.Where(o => ParseDate(o.OrderDate) == date).ToList();
-                    last5Days.Add((date, CalculateRevenue(dayOrders), dayOrders.Count));
+                    var targetDate = today.AddDays(-i);
+                    var dayOrders = ordersByDate.ContainsKey(targetDate)
+                        ? ordersByDate[targetDate]
+                        : new List<Models.Order>();
 
-                    _logger.LogInformation($"📊 Chart Day {date:dd.MM}: {dayOrders.Count} orders, {CalculateRevenue(dayOrders):F2} TL");
+                    var revenue = CalculateRevenue(dayOrders);
+                    last5Days.Add((targetDate, revenue, dayOrders.Count));
+
+                    _logger.LogInformation($"📊 Last5Days Chart: {targetDate:dd.MM.yyyy} - {dayOrders.Count} orders, {revenue:F2} TL");
                 }
+
+                // Son 30 gün için de aynı mantık
+                var last30Days = new List<(DateTime Date, decimal Revenue, int OrderCount)>();
+
+                for (int i = 29; i >= 0; i--)
+                {
+                    var targetDate = today.AddDays(-i);
+                    var dayOrders = ordersByDate.ContainsKey(targetDate)
+                        ? ordersByDate[targetDate]
+                        : new List<Models.Order>();
+
+                    var revenue = CalculateRevenue(dayOrders);
+                    last30Days.Add((targetDate, revenue, dayOrders.Count));
+                }
+
                 ViewBag.Last7DaysChart = last5Days;
-                ViewBag.Last30DaysChart = last5Days;
+                ViewBag.Last30DaysChart = last30Days;
 
-                // ✅ FIXED: EN ÇOK SATAN 5 ÜRÜN
+                // EN ÇOK SATAN 5 ÜRÜN
                 var topSellingProducts = new List<TopSellingProduct>();
-
-                // Siparişlerden ürün sayılarını topla
                 var productSales = new Dictionary<string, int>();
+
                 foreach (var order in orderList)
                 {
                     if (order.OrderDetails != null)
@@ -140,11 +162,7 @@ namespace TSoftApiClient.Controllers
                     }
                 }
 
-                // En çok satanları bul
-                var topProducts = productSales
-                    .OrderByDescending(x => x.Value)
-                    .Take(5)
-                    .ToList();
+                var topProducts = productSales.OrderByDescending(x => x.Value).Take(5).ToList();
 
                 foreach (var (productCode, quantity) in topProducts)
                 {
@@ -156,23 +174,19 @@ namespace TSoftApiClient.Controllers
                             ProductCode = productCode,
                             ProductName = product.ProductName ?? "Bilinmeyen",
                             TotalSold = quantity,
-                            Revenue = 0 // Hesaplanabilir ama şimdilik 0
+                            Revenue = 0
                         });
                     }
                 }
 
                 ViewBag.TopSellingProducts = topSellingProducts;
-
-                // ⚡ EMPTY Stats (too slow to calculate)
                 ViewBag.CategoryStats = new List<CategoryStat>();
                 ViewBag.PaymentTypeStats = new List<PaymentStat>();
-
-                // ========== RECENT ITEMS (Already have them) ==========
-                ViewBag.RecentOrders = orderList.Take(5).ToList();
+                ViewBag.RecentOrders = orderList.Take(10).ToList();
                 ViewBag.RecentCustomers = customerList.Take(5).ToList();
                 ViewBag.RecentProducts = productList.Take(5).ToList();
 
-                // ========== ALERTS ==========
+                // ALERTS
                 var alerts = new List<DashboardAlert>();
 
                 if (lowStockCount > 0)
@@ -215,8 +229,6 @@ namespace TSoftApiClient.Controllers
                 }
 
                 ViewBag.Alerts = alerts;
-
-                // ========== MINIMAL METRICS ==========
                 ViewBag.AverageOrderValue = orderList.Count > 0 ? (decimal)ViewBag.TotalRevenue / orderList.Count : 0;
                 ViewBag.ConversionRate = 3.2m;
                 ViewBag.CompletionRate = orderList.Count > 0 ? (decimal)ViewBag.CompletedOrders / orderList.Count * 100 : 0;
