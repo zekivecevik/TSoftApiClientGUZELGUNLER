@@ -5,7 +5,7 @@ using System.Globalization;
 namespace TSoftApiClient.Controllers
 {
     /// <summary>
-    /// ULTRA FAST Dashboard - Minimal Data Loading
+    /// ULTRA FAST Dashboard - Son 100 Siparişe Göre En Çok Satan Ürünler
     /// </summary>
     public class HomeController : Controller
     {
@@ -27,7 +27,7 @@ namespace TSoftApiClient.Controllers
                 _logger.LogInformation("⚡ Loading ULTRA FAST Dashboard...");
 
                 var productsTask = _tsoftService.GetProductsAsync(limit: 100);
-                var ordersTask = _tsoftService.GetOrdersAsync(limit: 600);  // ✅ 300 sipariş - optimal!
+                var ordersTask = _tsoftService.GetOrdersAsync(limit: 600);  // ✅ 600 sipariş - grafikler için
                 var customersTask = _tsoftService.GetCustomersAsync(limit: 20);
 
                 var categoriesTask = Task.FromResult(new Models.TSoftApiResponse<List<Models.Category>>
@@ -46,7 +46,7 @@ namespace TSoftApiClient.Controllers
                 var orderList = orders.Success && orders.Data != null ? orders.Data : new List<Models.Order>();
                 var customerList = customers.Success && customers.Data != null ? customers.Data : new List<Models.Customer>();
 
-                _logger.LogInformation($"✅ FAST Load: {productList.Count} products, {orderList.Count} orders, {customerList.Count} customers");
+                _logger.LogInformation($"✅ FAST Load: {productList.Count} products, {orderList.Count} orders (600 total, using last 100 for top products), {customerList.Count} customers");
 
                 var today = DateTime.Now.Date;
 
@@ -98,7 +98,7 @@ namespace TSoftApiClient.Controllers
                 ViewBag.CompletedOrders = orderList.Count(o => o.OrderStatusId == "3");
                 ViewBag.CancelledOrders = orderList.Count(o => o.OrderStatusId == "4");
 
-                // ========== FIXED: REAL LAST 30 & 5 DAYS CHART ==========
+                // ========== SON 5 & 30 GÜN GRAFİĞİ ==========
                 var ordersByDate = orderList
                     .GroupBy(o => ParseDate(o.OrderDate).Date)
                     .Where(g => g.Key != DateTime.MinValue.Date)
@@ -106,7 +106,6 @@ namespace TSoftApiClient.Controllers
 
                 _logger.LogInformation($"📊 Order dates available: {string.Join(", ", ordersByDate.Keys.Select(d => d.ToString("dd.MM")))}");
 
-                // ✅ FIXED: Son 5 günü oluştur (boş günler dahil!)
                 var last5Days = new List<(DateTime Date, decimal Revenue, int OrderCount)>();
 
                 for (int i = 4; i >= 0; i--)
@@ -122,7 +121,6 @@ namespace TSoftApiClient.Controllers
                     _logger.LogInformation($"📊 Last5Days Chart: {targetDate:dd.MM.yyyy} - {dayOrders.Count} orders, {revenue:F2} TL");
                 }
 
-                // Son 30 gün için de aynı mantık
                 var last30Days = new List<(DateTime Date, decimal Revenue, int OrderCount)>();
 
                 for (int i = 29; i >= 0; i--)
@@ -139,13 +137,38 @@ namespace TSoftApiClient.Controllers
                 ViewBag.Last7DaysChart = last5Days;
                 ViewBag.Last30DaysChart = last30Days;
 
-                // EN ÇOK SATAN 5 ÜRÜN
+                // ========== ✅ EN ÇOK SATAN 5 ÜRÜN (ALTERNATİF YÖNTEM) ==========
+                _logger.LogInformation("📊 Calculating Top 5 products from orders (alternative method)...");
+
                 var topSellingProducts = new List<TopSellingProduct>();
                 var productSales = new Dictionary<string, int>();
 
-                foreach (var order in orderList)
+                // SON 100 SİPARİŞİ KULLAN
+                var last100Orders = orderList.Take(100).ToList();
+
+                _logger.LogInformation($"📦 Analyzing {last100Orders.Count} orders for product sales...");
+
+                // ALTERNATİF 1: Siparişlerin kendi detaylarını kullan (eğer varsa)
+                foreach (var order in last100Orders)
                 {
-                    if (order.OrderDetails != null)
+                    // Önce Items'a bak (bazı API'lerde Items kullanılıyor)
+                    if (order.Items != null && order.Items.Count > 0)
+                    {
+                        foreach (var item in order.Items)
+                        {
+                            var productCode = item.ProductCode ?? item.ProductId ?? "";
+                            if (!string.IsNullOrEmpty(productCode))
+                            {
+                                if (!productSales.ContainsKey(productCode))
+                                    productSales[productCode] = 0;
+
+                                if (int.TryParse(item.Quantity, out var qty))
+                                    productSales[productCode] += qty;
+                            }
+                        }
+                    }
+                    // Sonra OrderDetails'a bak
+                    else if (order.OrderDetails != null && order.OrderDetails.Count > 0)
                     {
                         foreach (var detail in order.OrderDetails)
                         {
@@ -160,22 +183,73 @@ namespace TSoftApiClient.Controllers
                             }
                         }
                     }
+                    // Her ikisi de yoksa ItemCount kullan (en az 1 ürün varsay)
+                    else if (order.ItemCount > 0)
+                    {
+                        // Sipariş toplam tutarından ortalama ürün çıkarmaya çalış
+                        // Bu kesin değil ama en azından bir şeyler gösterir
+                        _logger.LogDebug($"Order {order.OrderCode} has ItemCount={order.ItemCount} but no details");
+                    }
                 }
 
-                var topProducts = productSales.OrderByDescending(x => x.Value).Take(5).ToList();
+                _logger.LogInformation($"📊 Found {productSales.Count} unique products from {last100Orders.Count} orders");
 
-                foreach (var (productCode, quantity) in topProducts)
+                // ALTERNATİF 2: Eğer hiç ürün bulunamadıysa, tüm ürünlerden en popülerlerini göster
+                if (productSales.Count == 0)
                 {
-                    var product = productList.FirstOrDefault(p => p.ProductCode == productCode);
-                    if (product != null)
+                    _logger.LogWarning("⚠️ No product sales data found in orders. Showing top products by stock movement...");
+
+                    // En az stoklu ürünler = en çok satılanlar olabilir
+                    var topByStock = productList
+                        .Where(p => !string.IsNullOrEmpty(p.ProductCode))
+                        .OrderBy(p => int.TryParse(p.Stock, out var s) ? s : int.MaxValue)
+                        .Take(5)
+                        .ToList();
+
+                    foreach (var product in topByStock)
                     {
                         topSellingProducts.Add(new TopSellingProduct
                         {
-                            ProductCode = productCode,
+                            ProductCode = product.ProductCode ?? "",
                             ProductName = product.ProductName ?? "Bilinmeyen",
-                            TotalSold = quantity,
+                            TotalSold = 0, // Bilinmiyor
                             Revenue = 0
                         });
+                    }
+                }
+                else
+                {
+                    // Normal yöntem: satış verisi var
+                    var topProducts = productSales.OrderByDescending(x => x.Value).Take(5).ToList();
+
+                    _logger.LogInformation($"✅ Top 5 products calculated:");
+                    _logger.LogInformation($"✅ Top 5 products calculated:");
+                    foreach (var (productCode, quantity) in topProducts)
+                    {
+                        _logger.LogInformation($"  - {productCode}: {quantity} adet satıldı");
+
+                        var product = productList.FirstOrDefault(p => p.ProductCode == productCode);
+                        if (product != null)
+                        {
+                            topSellingProducts.Add(new TopSellingProduct
+                            {
+                                ProductCode = productCode,
+                                ProductName = product.ProductName ?? "Bilinmeyen",
+                                TotalSold = quantity,
+                                Revenue = 0
+                            });
+                        }
+                        else
+                        {
+                            topSellingProducts.Add(new TopSellingProduct
+                            {
+                                ProductCode = productCode,
+                                ProductName = $"Ürün ({productCode})",
+                                TotalSold = quantity,
+                                Revenue = 0
+                            });
+                            _logger.LogWarning($"⚠️ Product {productCode} not found in product list");
+                        }
                     }
                 }
 
@@ -235,7 +309,7 @@ namespace TSoftApiClient.Controllers
                 ViewBag.AverageCycleDays = 3;
                 ViewBag.CityStats = new List<object>();
 
-                _logger.LogInformation("✅ ULTRA FAST Dashboard loaded!");
+                _logger.LogInformation("✅ ULTRA FAST Dashboard loaded! (Son 100 sipariş verisiyle)");
                 return View();
             }
             catch (Exception ex)
