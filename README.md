@@ -224,3 +224,6 @@ Pull request'ler memnuniyetle karşılanır!
 ## 📄 Lisans
 
 MIT License
+
+
+ssss

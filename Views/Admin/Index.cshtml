@@ -1,0 +1,182 @@
+﻿@{
+    ViewData["Title"] = "Admin Panel";
+    var users = (List<UserInfo>)ViewBag.Users;
+    var logs = (List<AuditLog>)ViewBag.Logs;
+    var stats = ViewBag.Stats;
+}
+
+<div class="stats-bar">
+    <div class="stats-container" style="justify-content: center;">
+        <div class="stat-mini">
+            <div class="stat-icon purple">👥</div>
+            <div class="stat-content">
+                <div class="stat-label">Toplam Kullanıcı</div>
+                <div class="stat-value-mini">@users.Count</div>
+            </div>
+        </div>
+        <div class="stat-mini">
+            <div class="stat-icon blue">📋</div>
+            <div class="stat-content">
+                <div class="stat-label">Toplam Log</div>
+                <div class="stat-value-mini">@stats.TotalLogs</div>
+            </div>
+        </div>
+        <div class="stat-mini">
+            <div class="stat-icon green">✅</div>
+            <div class="stat-content">
+                <div class="stat-label">Başarılı İşlem</div>
+                <div class="stat-value-mini">@stats.SuccessfulActions</div>
+            </div>
+        </div>
+        <div class="stat-mini">
+            <div class="stat-icon red">❌</div>
+            <div class="stat-content">
+                <div class="stat-label">Başarısız İşlem</div>
+                <div class="stat-value-mini">@stats.FailedActions</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="page-container">
+    <div class="section-header">
+        <h1 class="section-title">👑 Admin Panel</h1>
+        <div class="section-actions">
+            <a href="/Admin/Users" class="btn btn-primary">👥 Kullanıcılar</a>
+            <a href="/Admin/Logs" class="btn btn-secondary">📋 Loglar</a>
+        </div>
+    </div>
+
+    <!-- Quick Stats -->
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 24px; margin-bottom: 32px;">
+        <!-- Kullanıcı İstatistikleri -->
+        <div style="background: linear-gradient(135deg, #667eea 0%, #764ba2 100%); border-radius: 16px; padding: 32px; color: white;">
+            <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">Toplam Kullanıcı</div>
+            <div style="font-size: 48px; font-weight: 800; margin-bottom: 16px;">@users.Count</div>
+            <div style="display: flex; gap: 16px; font-size: 13px;">
+                <div>Admin: @users.Count(u => u.Role == "Admin")</div>
+                <div>Manager: @users.Count(u => u.Role == "Manager")</div>
+                <div>Viewer: @users.Count(u => u.Role == "Viewer")</div>
+            </div>
+        </div>
+
+        <!-- Log İstatistikleri -->
+        <div style="background: linear-gradient(135deg, #f093fb 0%, #f5576c 100%); border-radius: 16px; padding: 32px; color: white;">
+            <div style="font-size: 14px; opacity: 0.9; margin-bottom: 8px;">Başarı Oranı</div>
+            <div style="font-size: 48px; font-weight: 800; margin-bottom: 16px;">@string.Format("{0:N1}%", stats.SuccessRate)</div>
+            <div style="font-size: 13px;">
+                @stats.SuccessfulActions başarılı / @stats.FailedActions başarısız
+            </div>
+        </div>
+    </div>
+
+    <!-- En Aktif Kullanıcılar -->
+    <div class="cards-container" style="margin-bottom: 32px;">
+        <h3 style="font-size: 18px; font-weight: 700; margin-bottom: 20px;">🔥 En Aktif Kullanıcılar</h3>
+
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
+            @foreach (var topUser in stats.TopUsers)
+            {
+                var user = users.FirstOrDefault(u => u.Username == topUser.Username);
+                var roleIcon = user?.Role switch
+                {
+                    "Admin" => "👑",
+                    "Manager" => "👨‍💼",
+                    "Viewer" => "👁️",
+                    _ => "👤"
+                };
+
+                <div style="background: var(--bg-main); border: 1px solid var(--border); border-radius: 12px; padding: 20px;">
+                    <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 12px;">
+                        <div style="font-size: 32px;">@roleIcon</div>
+                        <div style="flex: 1;">
+                            <div style="font-size: 16px; font-weight: 600; color: var(--text-primary);">
+                                @topUser.Username
+                            </div>
+                            <div style="font-size: 12px; color: var(--text-secondary);">
+                                @user?.Role
+                            </div>
+                        </div>
+                    </div>
+                    <div style="display: flex; justify-content: space-between; align-items: center;">
+                        <span style="font-size: 12px; color: var(--text-secondary);">İşlem Sayısı</span>
+                        <span style="font-size: 20px; font-weight: 700; color: var(--primary);">@topUser.ActionCount</span>
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- En Son Loglar -->
+    <div class="cards-container">
+        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+            <h3 style="font-size: 18px; font-weight: 700; margin: 0;">📋 Son İşlemler</h3>
+            <a href="/Admin/Logs" class="btn btn-secondary">Tüm Loglar →</a>
+        </div>
+
+        <div class="table-container">
+            <table class="table">
+                <thead>
+                    <tr>
+                        <th>Durum</th>
+                        <th>Tarih</th>
+                        <th>Kullanıcı</th>
+                        <th>Aksiyon</th>
+                        <th>Entity</th>
+                        <th>Detay</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var log in logs)
+                    {
+                        <tr>
+                            <td>
+                                @if (log.Success)
+                                {
+                                    <span style="font-size: 20px;">✅</span>
+                                }
+                                else
+                                {
+                                    <span style="font-size: 20px;">❌</span>
+                                }
+                            </td>
+                            <td>
+                                <div style="font-size: 13px; font-weight: 600;">
+                                    @log.Timestamp.ToString("dd.MM.yyyy")
+                                </div>
+                                <div style="font-size: 11px; color: var(--text-secondary);">
+                                    @log.Timestamp.ToString("HH:mm:ss")
+                                </div>
+                            </td>
+                            <td>
+                                <strong>@log.Username</strong>
+                                @if (log.UserId.HasValue)
+                                {
+                                    <div style="font-size: 11px; color: var(--text-secondary);">ID: @log.UserId</div>
+                                }
+                            </td>
+                            <td>
+                                <span class="badge badge-info">@log.Action</span>
+                            </td>
+                            <td>
+                                <span class="badge badge-secondary">@log.Entity</span>
+                            </td>
+                            <td>
+                                @if (!string.IsNullOrEmpty(log.Details))
+                                {
+                                    <div style="font-size: 12px; color: var(--text-secondary);">
+                                        @(log.Details.Length > 50 ? log.Details.Substring(0, 50) + "..." : log.Details)
+                                    </div>
+                                }
+                                else
+                                {
+                                    <span style="color: var(--text-secondary);">-</span>
+                                }
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
