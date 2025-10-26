@@ -1,4 +1,4 @@
-using Microsoft.AspNetCore.Authorization;
+ï»¿using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 using TSoftApiClient.Models;
 using TSoftApiClient.Services;
@@ -6,155 +6,182 @@ using TSoftApiClient.Services;
 namespace TSoftApiClient.Controllers
 {
     /// <summary>
-    /// Login & Auth MVC Controller
+    /// Account MVC Controller - Login, Logout, Profile Pages
     /// </summary>
     public class AccountController : Controller
     {
         private readonly AuthService _authService;
-        private readonly AuditLogService _auditLog;
+        private readonly AuditLogService _auditLogService;
         private readonly ILogger<AccountController> _logger;
 
         public AccountController(
             AuthService authService,
-            AuditLogService auditLog,
+            AuditLogService auditLogService,
             ILogger<AccountController> logger)
         {
             _authService = authService;
-            _auditLog = auditLog;
+            _auditLogService = auditLogService;
             _logger = logger;
         }
 
         /// <summary>
-        /// Login sayfasý
+        /// Login Page
         /// </summary>
         [HttpGet]
-        [Route("/Login")]
         [Route("/Account/Login")]
+        [Route("/Login")]
         [AllowAnonymous]
         public IActionResult Login(string? returnUrl = null)
         {
-            // Zaten giriþ yapmýþsa dashboard'a yönlendir
-            if (User.Identity?.IsAuthenticated == true)
+            // Zaten giriÅŸ yapmÄ±ÅŸsa ana sayfaya yÃ¶nlendir
+            if (User?.Identity?.IsAuthenticated == true)
             {
                 return RedirectToAction("Index", "Home");
             }
 
             ViewBag.ReturnUrl = returnUrl;
-            return View("~/Views/Account/Login.cshtml");
+            return View();
         }
 
         /// <summary>
-        /// Login iþlemi
+        /// Login POST
         /// </summary>
         [HttpPost]
-        [Route("/Login")]
         [Route("/Account/Login")]
         [AllowAnonymous]
         [ValidateAntiForgeryToken]
-        public IActionResult Login(LoginRequest model, string? returnUrl = null)
+        public IActionResult Login([FromForm] LoginRequest request, string? returnUrl = null)
         {
-            if (!ModelState.IsValid)
+            try
             {
-                ViewBag.Error = "Lütfen tüm alanlarý doldurun";
-                return View("~/Views/Account/Login.cshtml", model);
+                var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
+                var userAgent = Request.Headers["User-Agent"].ToString();
+
+                var result = _authService.Login(request, ipAddress, userAgent);
+
+                if (result.Success && result.Token != null)
+                {
+                    // Cookie'ye token ekle
+                    Response.Cookies.Append("AuthToken", result.Token, new CookieOptions
+                    {
+                        HttpOnly = true,
+                        Secure = false, // Development iÃ§in false, production'da true
+                        SameSite = SameSiteMode.Lax,
+                        Expires = DateTimeOffset.UtcNow.AddHours(8)
+                    });
+
+                    // Session'a kullanÄ±cÄ± bilgilerini ekle
+                    HttpContext.Session.SetString("Username", result.User?.Username ?? "");
+                    HttpContext.Session.SetString("Role", result.User?.Role ?? "");
+                    HttpContext.Session.SetInt32("UserId", result.User?.Id ?? 0);
+
+                    _auditLogService.LogLogin(request.Username, true, ipAddress, userAgent);
+
+                    _logger.LogInformation("âœ… User logged in: {Username}", request.Username);
+
+                    // Return URL varsa oraya, yoksa ana sayfaya
+                    if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
+                    {
+                        return Redirect(returnUrl);
+                    }
+
+                    return RedirectToAction("Index", "Home");
+                }
+
+                _auditLogService.LogLogin(request.Username, false, ipAddress, userAgent);
+                ViewBag.Error = result.Message;
+                return View(request);
             }
-
-            var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
-            var userAgent = Request.Headers["User-Agent"].ToString();
-
-            var response = _authService.Login(model, ipAddress, userAgent);
-
-            if (!response.Success)
+            catch (Exception ex)
             {
-                ViewBag.Error = response.Message;
-                return View("~/Views/Account/Login.cshtml", model);
+                _logger.LogError(ex, "ðŸ’¥ Login error");
+                ViewBag.Error = "GiriÅŸ sÄ±rasÄ±nda bir hata oluÅŸtu";
+                return View(request);
             }
-
-            // JWT Token'ý cookie'ye kaydet
-            HttpContext.Response.Cookies.Append("AuthToken", response.Token!, new CookieOptions
-            {
-                HttpOnly = true,
-                Secure = true,
-                SameSite = SameSiteMode.Strict,
-                Expires = DateTimeOffset.UtcNow.AddHours(8)
-            });
-
-            // Kullanýcý bilgilerini session'a kaydet (opsiyonel)
-            HttpContext.Session.SetString("Username", response.User!.Username);
-            HttpContext.Session.SetString("Role", response.User.Role);
-
-            TempData["Success"] = $"Hoþgeldiniz, {response.User.FullName}!";
-
-            if (!string.IsNullOrEmpty(returnUrl) && Url.IsLocalUrl(returnUrl))
-            {
-                return Redirect(returnUrl);
-            }
-
-            return RedirectToAction("Index", "Home");
         }
 
         /// <summary>
         /// Logout
         /// </summary>
         [HttpGet]
-        [Route("/Logout")]
         [Route("/Account/Logout")]
-        [Authorize]
+        [Route("/Logout")]
         public IActionResult Logout()
         {
-            var username = User.Identity?.Name ?? "Unknown";
-            var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
-            var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "Unknown";
+            try
+            {
+                var username = HttpContext.Session.GetString("Username") ?? User?.Identity?.Name ?? "Unknown";
+                var userId = HttpContext.Session.GetInt32("UserId") ?? 0;
+                var ipAddress = HttpContext.Connection.RemoteIpAddress?.ToString() ?? "unknown";
 
-            _auditLog.LogLogout(userId, username, ipAddress);
+                // Cookie'yi sil
+                Response.Cookies.Delete("AuthToken");
 
-            // Cookie'yi sil
-            HttpContext.Response.Cookies.Delete("AuthToken");
+                // Session'Ä± temizle
+                HttpContext.Session.Clear();
 
-            // Session temizle
-            HttpContext.Session.Clear();
+                // Audit log
+                if (userId > 0)
+                {
+                    _auditLogService.LogLogout(userId, username, ipAddress);
+                }
 
-            TempData["Info"] = "Çýkýþ yapýldý";
+                _logger.LogInformation("âœ… User logged out: {Username}", username);
 
-            return RedirectToAction("Login");
+                TempData["Info"] = "BaÅŸarÄ±yla Ã§Ä±kÄ±ÅŸ yaptÄ±nÄ±z";
+                return RedirectToAction("Login");
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "ðŸ’¥ Logout error");
+                return RedirectToAction("Login");
+            }
         }
 
         /// <summary>
-        /// Access Denied sayfasý
-        /// </summary>
-        [HttpGet]
-        [Route("/Account/AccessDenied")]
-        public IActionResult AccessDenied()
-        {
-            return View("~/Views/Account/AccessDenied.cshtml");
-        }
-
-        /// <summary>
-        /// Kullanýcý profili
+        /// Profile Page
         /// </summary>
         [HttpGet]
         [Route("/Account/Profile")]
         [Authorize]
         public IActionResult Profile()
         {
-            var userId = int.Parse(User.FindFirst(System.Security.Claims.ClaimTypes.NameIdentifier)?.Value ?? "0");
-            var username = User.Identity?.Name ?? "";
-            var email = User.FindFirst(System.Security.Claims.ClaimTypes.Email)?.Value ?? "";
-            var role = User.FindFirst(System.Security.Claims.ClaimTypes.Role)?.Value ?? "";
-            var fullName = User.FindFirst("FullName")?.Value ?? "";
-            var apiKey = User.FindFirst("ApiKey")?.Value ?? "";
-
-            ViewBag.User = new UserInfo
+            try
             {
-                Id = userId,
-                Username = username,
-                Email = email,
-                FullName = fullName,
-                Role = role,
-                ApiKey = apiKey
-            };
+                var username = User?.Identity?.Name ?? HttpContext.Session.GetString("Username");
+                var userId = HttpContext.Session.GetInt32("UserId") ?? 0;
 
-            return View("~/Views/Account/Profile.cshtml");
+                if (string.IsNullOrEmpty(username) || userId == 0)
+                {
+                    return RedirectToAction("Login");
+                }
+
+                var users = _authService.GetAllUsers();
+                var user = users.FirstOrDefault(u => u.Username == username);
+
+                if (user == null)
+                {
+                    return RedirectToAction("Login");
+                }
+
+                ViewBag.User = user;
+                return View();
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "ðŸ’¥ Profile page error");
+                return RedirectToAction("Index", "Home");
+            }
+        }
+
+        /// <summary>
+        /// Access Denied Page
+        /// </summary>
+        [HttpGet]
+        [Route("/Account/AccessDenied")]
+        public IActionResult AccessDenied()
+        {
+            return View();
         }
     }
 }
