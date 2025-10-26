@@ -296,13 +296,10 @@
             display: none;
         }
 
-        @media (min-width: 480px) {
-            .topbar-user-name
-
-        {
-            display: block;
-        }
-
+        @@media (min-width: 480px) {
+            .topbar-user-name {
+                display: block;
+            }
         }
 
         .sidebar-close {
@@ -364,14 +361,12 @@
             left: 0;
         }
 
-        @media (max-width: 768px) {
-            .sidebar-close
-
-        {
-            display: flex;
+        @@media (max-width: 768px) {
+            .sidebar-close {
+                display: flex;
+            }
         }
-
-        }</style>
+    </style>
 
     @await RenderSectionAsync("Scripts", required: false)
 </body>
