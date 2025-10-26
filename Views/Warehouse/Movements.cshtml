@@ -1,0 +1,247 @@
+﻿@model List<StockMovement>
+@{
+    ViewData["Title"] = "Stok Hareketleri";
+}
+
+<div class="stats-bar">
+    <div class="stats-container" style="justify-content: center;">
+        <div class="stat-mini">
+            <div class="stat-icon blue">📊</div>
+            <div class="stat-content">
+                <div class="stat-label">Toplam Hareket</div>
+                <div class="stat-value-mini">@Model.Count</div>
+            </div>
+        </div>
+        <div class="stat-mini">
+            <div class="stat-icon green">📥</div>
+            <div class="stat-content">
+                <div class="stat-label">Giriş</div>
+                <div class="stat-value-mini">@Model.Count(m => m.MovementType == "IN")</div>
+            </div>
+        </div>
+        <div class="stat-mini">
+            <div class="stat-icon red">📤</div>
+            <div class="stat-content">
+                <div class="stat-label">Çıkış</div>
+                <div class="stat-value-mini">@Model.Count(m => m.MovementType == "OUT")</div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="page-container">
+    <div class="section-header">
+        <h1 class="section-title">📊 Stok Hareketleri</h1>
+        <div class="section-actions">
+            @if (User?.IsInRole("Admin") == true || User?.IsInRole("Manager") == true)
+            {
+                <a href="/Warehouses/Movements/Create" class="btn btn-primary">
+                    ➕ Yeni Hareket
+                </a>
+            }
+            <a href="/Warehouses" class="btn btn-secondary">
+                ← Depolara Dön
+            </a>
+        </div>
+    </div>
+
+    <!-- Filtreler -->
+    <div class="cards-container" style="margin-bottom: 24px;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 16px;">
+            <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label">🏭 Depo</label>
+                <select id="warehouseFilter" class="form-select" onchange="applyFilters()">
+                    <option value="">Tüm Depolar</option>
+                    @foreach (var warehouse in (List<Warehouse>)ViewBag.Warehouses)
+                    {
+                        <option value="@warehouse.WarehouseId" 
+                                @(ViewBag.SelectedWarehouse == warehouse.WarehouseId ? "selected" : "")>
+                            @warehouse.WarehouseName
+                        </option>
+                    }
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label">🎯 Hareket Tipi</label>
+                <select id="typeFilter" class="form-select" onchange="applyFilters()">
+                    <option value="">Tümü</option>
+                    <option value="IN">📥 Giriş</option>
+                    <option value="OUT">📤 Çıkış</option>
+                    <option value="TRANSFER_IN">🚚 Transfer Giriş</option>
+                    <option value="TRANSFER_OUT">🚚 Transfer Çıkış</option>
+                    <option value="ADJUSTMENT_IN">🔧 Düzeltme (+)</option>
+                    <option value="ADJUSTMENT_OUT">🔧 Düzeltme (-)</option>
+                </select>
+            </div>
+
+            <div class="form-group" style="margin-bottom: 0;">
+                <label class="form-label">🔍 Ürün Kodu</label>
+                <input type="search" id="productSearch" class="form-control" 
+                       placeholder="Ürün kodu..." onkeyup="applyFilters()">
+            </div>
+        </div>
+    </div>
+
+    @if (Model.Count > 0)
+    {
+        <div class="table-container">
+            <table class="table" id="movementsTable">
+                <thead>
+                    <tr>
+                        <th style="text-align: center;">Tarih</th>
+                        <th style="text-align: center;">Hareket Tipi</th>
+                        <th>Depo</th>
+                        <th>Ürün</th>
+                        <th style="text-align: center;">Miktar</th>
+                        <th style="text-align: center;">Birim Fiyat</th>
+                        <th style="text-align: center;">Toplam</th>
+                        <th>Referans</th>
+                        <th>Kullanıcı</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var movement in Model)
+                    {
+                        var badgeClass = movement.MovementType switch
+                        {
+                            "IN" => "badge-success",
+                            "OUT" => "badge-danger",
+                            "TRANSFER_IN" => "badge-info",
+                            "TRANSFER_OUT" => "badge-warning",
+                            "ADJUSTMENT_IN" => "badge-primary",
+                            "ADJUSTMENT_OUT" => "badge-secondary",
+                            _ => "badge-secondary"
+                        };
+
+                        var icon = movement.MovementType switch
+                        {
+                            "IN" => "📥",
+                            "OUT" => "📤",
+                            "TRANSFER_IN" or "TRANSFER_OUT" => "🚚",
+                            "ADJUSTMENT_IN" or "ADJUSTMENT_OUT" => "🔧",
+                            _ => "📊"
+                        };
+
+                        <tr data-warehouse="@movement.WarehouseId"
+                            data-type="@movement.MovementType"
+                            data-product="@(movement.ProductCode?.ToLower())">
+                            
+                            <td style="text-align: center;">
+                                @if (DateTime.TryParse(movement.MovementDate, out var dt))
+                                {
+                                    <div style="font-size: 14px; font-weight: 600;">@dt.ToString("dd.MM.yyyy")</div>
+                                    <div style="font-size: 12px; color: var(--text-secondary);">@dt.ToString("HH:mm")</div>
+                                }
+                            </td>
+
+                            <td style="text-align: center;">
+                                <span class="badge @badgeClass" style="font-size: 13px; padding: 6px 12px;">
+                                    @icon @movement.MovementType
+                                </span>
+                            </td>
+
+                            <td>
+                                <strong>@movement.WarehouseName</strong>
+                            </td>
+
+                            <td>
+                                <div style="font-weight: 600;">@movement.ProductName</div>
+                                <small style="color: var(--text-secondary);">@movement.ProductCode</small>
+                            </td>
+
+                            <td style="text-align: center;">
+                                <strong style="font-size: 16px; color: var(--primary);">@movement.Quantity</strong>
+                            </td>
+
+                            <td style="text-align: center;">
+                                @if (!string.IsNullOrEmpty(movement.UnitPrice))
+                                {
+                                    <span>₺@movement.UnitPrice</span>
+                                }
+                                else
+                                {
+                                    <span style="color: var(--text-secondary);">-</span>
+                                }
+                            </td>
+
+                            <td style="text-align: center;">
+                                @if (!string.IsNullOrEmpty(movement.TotalPrice))
+                                {
+                                    <strong style="color: var(--success);">₺@movement.TotalPrice</strong>
+                                }
+                                else
+                                {
+                                    <span style="color: var(--text-secondary);">-</span>
+                                }
+                            </td>
+
+                            <td>
+                                @if (!string.IsNullOrEmpty(movement.ReferenceNumber))
+                                {
+                                    <span class="badge badge-info" style="font-size: 11px;">@movement.ReferenceNumber</span>
+                                }
+                                else
+                                {
+                                    <span style="color: var(--text-secondary);">-</span>
+                                }
+                            </td>
+
+                            <td>
+                                <small>@movement.Username</small>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    }
+    else
+    {
+        <div class="cards-container">
+            <div class="empty-state">
+                <div style="font-size: 64px; margin-bottom: 16px;">📊</div>
+                <h3>Henüz hareket kaydı yok</h3>
+                <p style="color: var(--text-secondary);">İlk stok hareketini ekleyerek başlayın</p>
+            </div>
+        </div>
+    }
+</div>
+
+@section Scripts {
+    <script>
+        let allRows = [];
+
+        document.addEventListener('DOMContentLoaded', function() {
+            const table = document.getElementById('movementsTable');
+            if (table) {
+                allRows = Array.from(table.querySelectorAll('tbody tr'));
+            }
+        });
+
+        function applyFilters() {
+            const warehouseId = document.getElementById('warehouseFilter').value;
+            const movementType = document.getElementById('typeFilter').value;
+            const productSearch = document.getElementById('productSearch').value.toLowerCase();
+
+            let visibleCount = 0;
+
+            allRows.forEach(row => {
+                const rowWarehouse = row.getAttribute('data-warehouse') || '';
+                const rowType = row.getAttribute('data-type') || '';
+                const rowProduct = row.getAttribute('data-product') || '';
+
+                let show = true;
+
+                if (warehouseId && rowWarehouse !== warehouseId) show = false;
+                if (movementType && rowType !== movementType) show = false;
+                if (productSearch && !rowProduct.includes(productSearch)) show = false;
+
+                row.style.display = show ? '' : 'none';
+                if (show) visibleCount++;
+            });
+
+            console.log(`Showing ${visibleCount} of ${allRows.length} movements`);
+        }
+    </script>
+}

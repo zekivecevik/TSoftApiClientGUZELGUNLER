@@ -1,0 +1,140 @@
+@model List<Warehouse>
+@{
+    ViewData["Title"] = "Depolar";
+}
+
+<div class="stats-bar">
+    <div class="stats-container" style="justify-content: center;">
+        <div class="stat-mini">
+            <div class="stat-icon purple">🏭</div>
+            <div class="stat-content">
+                <div class="stat-label">Toplam Depo</div>
+                <div class="stat-value-mini">@Model.Count</div>
+            </div>
+        </div>
+        <div class="stat-mini">
+            <div class="stat-icon green">✅</div>
+            <div class="stat-content">
+                <div class="stat-label">Aktif Depo</div>
+                <div class="stat-value-mini">@ViewBag.ActiveCount</div>
+            </div>
+        </div>
+        <div class="stat-mini">
+            <div class="stat-icon blue">📦</div>
+            <div class="stat-content">
+                <div class="stat-label">Toplam Kapasite</div>
+                <div class="stat-value-mini">
+                    @Model.Sum(w => int.TryParse(w.Capacity, out var c) ? c : 0).ToString("N0")
+                </div>
+            </div>
+        </div>
+    </div>
+</div>
+
+<div class="page-container">
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success">✅ @TempData["Success"]</div>
+    }
+
+    <div class="section-header">
+        <h1 class="section-title">🏭 Depo Yönetimi</h1>
+        <div class="section-actions">
+            <a href="/Warehouses/Movements" class="btn btn-secondary">
+                📊 Hareketler
+            </a>
+            <a href="/Warehouses/StockCounts" class="btn btn-secondary">
+                📋 Stok Sayımları
+            </a>
+            <a href="/Warehouses/Transfers" class="btn btn-secondary">
+                🚚 Transferler
+            </a>
+        </div>
+    </div>
+
+    <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(400px, 1fr)); gap: 24px;">
+        @foreach (var warehouse in Model)
+        {
+            var isActive = warehouse.IsActive == "1";
+            var capacity = int.TryParse(warehouse.Capacity, out var cap) ? cap : 0;
+            var usage = int.TryParse(warehouse.CurrentUsage, out var use) ? use : 0;
+            var usagePercent = capacity > 0 ? (decimal)usage / capacity * 100 : 0;
+
+            <div class="cards-container" style="position: relative;">
+                @if (isActive)
+                {
+                    <div style="position: absolute; top: 16px; right: 16px;">
+                        <span class="badge badge-success">✅ Aktif</span>
+                    </div>
+                }
+                else
+                {
+                    <div style="position: absolute; top: 16px; right: 16px;">
+                        <span class="badge badge-danger">❌ Pasif</span>
+                    </div>
+                }
+
+                <div style="margin-bottom: 20px;">
+                    <div style="display: flex; align-items: center; gap: 16px; margin-bottom: 12px;">
+                        <div style="width: 64px; height: 64px; border-radius: 16px; background: linear-gradient(135deg, #7C3AED 0%, #EC4899 100%); display: flex; align-items: center; justify-content: center; font-size: 32px; color: white; box-shadow: 0 8px 20px rgba(124, 58, 237, 0.3);">
+                            🏭
+                        </div>
+                        <div style="flex: 1;">
+                            <h3 style="font-size: 20px; font-weight: 700; margin-bottom: 4px;">
+                                @warehouse.WarehouseName
+                            </h3>
+                            <span class="badge badge-info" style="font-size: 12px;">
+                                @warehouse.WarehouseCode
+                            </span>
+                        </div>
+                    </div>
+
+                    <div style="display: flex; flex-direction: column; gap: 10px; margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
+                        <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                            <span style="color: var(--text-secondary);">📍 Şehir</span>
+                            <strong>@warehouse.City</strong>
+                        </div>
+                        @if (!string.IsNullOrEmpty(warehouse.ManagerName))
+                        {
+                            <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                                <span style="color: var(--text-secondary);">👤 Sorumlu</span>
+                                <strong>@warehouse.ManagerName</strong>
+                            </div>
+                        }
+                        @if (!string.IsNullOrEmpty(warehouse.Phone))
+                        {
+                            <div style="display: flex; justify-content: space-between; font-size: 13px;">
+                                <span style="color: var(--text-secondary);">📞 Telefon</span>
+                                <strong>@warehouse.Phone</strong>
+                            </div>
+                        }
+                    </div>
+
+                    <!-- Kapasite Göstergesi -->
+                    <div style="margin-top: 16px; padding-top: 16px; border-top: 1px solid var(--border);">
+                        <div style="display: flex; justify-content: space-between; margin-bottom: 8px; font-size: 13px;">
+                            <span style="color: var(--text-secondary);">📦 Kapasite Kullanımı</span>
+                            <strong style="color: var(--primary);">@usagePercent.ToString("N1")%</strong>
+                        </div>
+                        <div style="width: 100%; height: 10px; background: var(--bg-main); border-radius: 5px; overflow: hidden;">
+                            <div style="width: @usagePercent%; height: 100%; background: linear-gradient(90deg, #10B981, #7C3AED); transition: width 0.5s;"></div>
+                        </div>
+                        <div style="display: flex; justify-content: space-between; margin-top: 4px; font-size: 11px; color: var(--text-secondary);">
+                            <span>@usage.ToString("N0")</span>
+                            <span>@capacity.ToString("N0")</span>
+                        </div>
+                    </div>
+                </div>
+
+                <div style="display: flex; gap: 8px; padding-top: 16px; border-top: 1px solid var(--border);">
+                    <a href="/Warehouses/@warehouse.WarehouseId" class="btn btn-primary" style="flex: 1; justify-content: center;">
+                        📊 Detay
+                    </a>
+                    <a href="/Warehouses/@warehouse.WarehouseId/Stocks" class="btn btn-secondary" style="flex: 1; justify-content: center;">
+                        📦 Stoklar
+                    </a>
+                </div>
+            </div>
+        }
+    </div>
+</div>

@@ -1,0 +1,253 @@
+﻿@model StockCount
+@{
+    ViewData["Title"] = "Stok Sayımı Detayı";
+    var isCompleted = Model.Status == "COMPLETED";
+    var isInProgress = Model.Status == "IN_PROGRESS";
+}
+
+<div class="page-container">
+    @if (TempData["Success"] != null)
+    {
+        <div class="alert alert-success">✅ @TempData["Success"]</div>
+    }
+    @if (TempData["Error"] != null)
+    {
+        <div class="alert alert-danger">❌ @TempData["Error"]</div>
+    }
+
+    <div class="section-header">
+        <h1 class="section-title">📋 Stok Sayımı: @Model.CountNumber</h1>
+        <div class="section-actions">
+            @if (isInProgress && (User?.IsInRole("Admin") == true || User?.IsInRole("Manager") == true))
+            {
+                <form method="post" action="/Warehouses/StockCounts/@Model.Id/Complete" style="display: inline;">
+                    @Html.AntiForgeryToken()
+                    <button type="submit" class="btn btn-success"
+                            onclick="return confirm('Sayımı tamamlamak istediğinizden emin misiniz? Tüm farklar otomatik düzeltilecektir.')">
+                        ✅ Sayımı Tamamla
+                    </button>
+                </form>
+            }
+            <a href="/Warehouses/StockCounts" class="btn btn-secondary">← Geri Dön</a>
+        </div>
+    </div>
+
+    <!-- Sayım Bilgileri -->
+    <div class="cards-container" style="margin-bottom: 24px;">
+        <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(250px, 1fr)); gap: 24px;">
+            <div>
+                <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Sayım Numarası</div>
+                <div style="font-size: 18px; font-weight: 700; color: var(--primary);">@Model.CountNumber</div>
+            </div>
+            <div>
+                <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Depo</div>
+                <div style="font-size: 16px; font-weight: 600;">@Model.WarehouseName</div>
+            </div>
+            <div>
+                <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Durum</div>
+                @{
+                    var statusBadge = Model.Status switch
+                    {
+                        "COMPLETED" => "badge-success",
+                        "IN_PROGRESS" => "badge-info",
+                        "CANCELLED" => "badge-danger",
+                        _ => "badge-secondary"
+                    };
+                    var statusText = Model.Status switch
+                    {
+                        "COMPLETED" => "✅ Tamamlandı",
+                        "IN_PROGRESS" => "⏳ Devam Ediyor",
+                        "CANCELLED" => "❌ İptal",
+                        _ => Model.Status
+                    };
+                }
+                <span class="badge @statusBadge" style="font-size: 14px; padding: 6px 14px;">@statusText</span>
+            </div>
+            <div>
+                <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Sayan Kişi</div>
+                <div style="font-size: 16px; font-weight: 600;">@Model.CountedBy</div>
+            </div>
+            @if (!string.IsNullOrEmpty(Model.StartDate))
+            {
+                <div>
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Başlangıç</div>
+                    <div style="font-size: 14px; font-weight: 600;">
+                        @(DateTime.TryParse(Model.StartDate, out var start) ? start.ToString("dd.MM.yyyy HH:mm") : Model.StartDate)
+                    </div>
+                </div>
+            }
+            @if (!string.IsNullOrEmpty(Model.EndDate))
+            {
+                <div>
+                    <div style="font-size: 12px; color: var(--text-secondary); margin-bottom: 4px;">Bitiş</div>
+                    <div style="font-size: 14px; font-weight: 600;">
+                        @(DateTime.TryParse(Model.EndDate, out var end) ? end.ToString("dd.MM.yyyy HH:mm") : Model.EndDate)
+                    </div>
+                </div>
+            }
+        </div>
+    </div>
+
+    <!-- İstatistikler -->
+    @if (Model.Items != null && Model.Items.Count > 0)
+    {
+        var totalItems = Model.Items.Count;
+        var countedItems = Model.Items.Count(i => i.CountedQuantity != "0");
+        var itemsWithDiff = Model.Items.Count(i => i.Difference != "0");
+        var totalSystemQty = Model.Items.Sum(i => int.TryParse(i.SystemQuantity, out var q) ? q : 0);
+        var totalCountedQty = Model.Items.Sum(i => int.TryParse(i.CountedQuantity, out var q) ? q : 0);
+        var totalDiff = totalCountedQty - totalSystemQty;
+
+        <div class="cards-container" style="margin-bottom: 24px;">
+            <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 16px;">📊 Sayım İstatistikleri</h3>
+
+            <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 16px;">
+                <div style="background: var(--bg-main); border-radius: 12px; padding: 20px; text-align: center;">
+                    <div style="font-size: 32px; font-weight: 800; color: var(--primary); margin-bottom: 8px;">@totalItems</div>
+                    <div style="font-size: 13px; color: var(--text-secondary);">Toplam Ürün</div>
+                </div>
+                <div style="background: var(--bg-main); border-radius: 12px; padding: 20px; text-align: center;">
+                    <div style="font-size: 32px; font-weight: 800; color: var(--info); margin-bottom: 8px;">@countedItems</div>
+                    <div style="font-size: 13px; color: var(--text-secondary);">Sayılan Ürün</div>
+                </div>
+                <div style="background: var(--bg-main); border-radius: 12px; padding: 20px; text-align: center;">
+                    <div style="font-size: 32px; font-weight: 800; color: var(--warning); margin-bottom: 8px;">@itemsWithDiff</div>
+                    <div style="font-size: 13px; color: var(--text-secondary);">Farklı Ürün</div>
+                </div>
+                <div style="background: var(--bg-main); border-radius: 12px; padding: 20px; text-align: center;">
+                    <div style="font-size: 32px; font-weight: 800; color: @(totalDiff >= 0 ? "var(--success)" : "var(--danger)"); margin-bottom: 8px;">
+                        @(totalDiff > 0 ? "+" : "")@totalDiff
+                    </div>
+                    <div style="font-size: 13px; color: var(--text-secondary);">Toplam Fark</div>
+                </div>
+            </div>
+        </div>
+    }
+
+    <!-- Sayım Kalemleri -->
+    @if (Model.Items != null && Model.Items.Count > 0)
+    {
+        <div class="cards-container">
+            <h3 style="font-size: 16px; font-weight: 700; margin-bottom: 16px;">📦 Sayım Kalemleri</h3>
+
+            <div class="table-container">
+                <table class="table">
+                    <thead>
+                        <tr>
+                            <th>Ürün Kodu</th>
+                            <th>Ürün Adı</th>
+                            <th>Raf</th>
+                            <th style="text-align: center;">Sistem Stok</th>
+                            <th style="text-align: center;">Sayılan</th>
+                            <th style="text-align: center;">Fark</th>
+                            @if (isInProgress)
+                            {
+                                <th style="text-align: center;">İşlem</th>
+                            }
+                        </tr>
+                    </thead>
+                    <tbody>
+                        @foreach (var item in Model.Items)
+                        {
+                            var diff = int.TryParse(item.Difference, out var d) ? d : 0;
+                            var diffColor = diff == 0 ? "var(--text-secondary)" : (diff > 0 ? "var(--success)" : "var(--danger)");
+                            var counted = int.TryParse(item.CountedQuantity, out var c) ? c : 0;
+
+                            <tr id="item-@item.ProductCode">
+                                <td>
+                                    <span class="badge badge-info">@item.ProductCode</span>
+                                </td>
+                                <td>
+                                    <strong>@item.ProductName</strong>
+                                </td>
+                                <td>
+                                    @if (!string.IsNullOrEmpty(item.Location))
+                                    {
+                                        <span class="badge badge-secondary" style="font-size: 11px;">@item.Location</span>
+                                    }
+                                    else
+                                    {
+                                        <span style="color: var(--text-secondary);">-</span>
+                                    }
+                                </td>
+                                <td style="text-align: center;">
+                                    <strong>@item.SystemQuantity</strong>
+                                </td>
+                                <td style="text-align: center;">
+                                    @if (isInProgress)
+                                    {
+                                        <input type="number"
+                                               id="qty-@item.ProductCode"
+                                               value="@counted"
+                                               min="0"
+                                               style="width: 80px; text-align: center; padding: 6px; border: 1px solid var(--border); border-radius: 6px; background: var(--bg-main); color: var(--text-primary);" />
+                                    }
+                                    else
+                                    {
+                                        <strong style="color: var(--primary);">@item.CountedQuantity</strong>
+                                    }
+                                </td>
+                                <td style="text-align: center;">
+                                    <strong style="color: @diffColor; font-size: 16px;">
+                                        @(diff > 0 ? "+" : "")@diff
+                                    </strong>
+                                </td>
+                                @if (isInProgress && (User?.IsInRole("Admin") == true || User?.IsInRole("Manager") == true))
+                                {
+                                    <td style="text-align: center;">
+                                        <button class="btn btn-primary" style="padding: 6px 12px; font-size: 12px;"
+                                                onclick="saveCountItem('@item.ProductCode', '@Model.Id')">
+                                            💾 Kaydet
+                                        </button>
+                                    </td>
+                                }
+                            </tr>
+                        }
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    }
+</div>
+
+@if (isInProgress)
+{
+    @section Scripts {
+        <script>
+            async function saveCountItem(productCode, stockCountId) {
+                const qtyInput = document.getElementById('qty-' + productCode);
+                const countedQuantity = parseInt(qtyInput.value);
+
+                if (isNaN(countedQuantity) || countedQuantity < 0) {
+                    alert('Geçerli bir miktar girin');
+                    return;
+                }
+
+                try {
+                    const response = await fetch('/Warehouses/StockCounts/UpdateItem', {
+                        method: 'POST',
+                        headers: {
+                            'Content-Type': 'application/json'
+                        },
+                        body: JSON.stringify({
+                            stockCountId: stockCountId,
+                            productCode: productCode,
+                            countedQuantity: countedQuantity
+                        })
+                    });
+
+                    const result = await response.json();
+
+                    if (result.success) {
+                        alert('✅ ' + result.message);
+                        location.reload();
+                    } else {
+                        alert('❌ ' + result.message);
+                    }
+                } catch (error) {
+                    alert('❌ Hata: ' + error.message);
+                }
+            }
+        </script>
+    }
+}
