@@ -36,6 +36,17 @@
                 <span class="nav-icon">🛒</span>
                 <span class="nav-text">Siparişler</span>
             </a>
+
+            @if (User?.IsInRole("Admin") == true)
+            {
+                <div style="margin: 16px 0; border-top: 1px solid rgba(124, 58, 237, 0.15);"></div>
+                <a href="/Admin" class="nav-item @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Admin" || ViewContext.RouteData.Values["Controller"]?.ToString() == "AdminUsers" ? "active" : "")" style="background: rgba(239, 68, 68, 0.1); border-color: rgba(239, 68, 68, 0.3);">
+                    <span class="nav-icon">👑</span>
+                    <span class="nav-text">Admin Panel</span>
+                </a>
+            }
+
+            <div style="margin: 16px 0; border-top: 1px solid rgba(124, 58, 237, 0.15);"></div>
             <a href="/Test" class="nav-item @(ViewContext.RouteData.Values["Controller"]?.ToString() == "Test" ? "active" : "")">
                 <span class="nav-icon">🧪</span>
                 <span class="nav-text">API Test</span>
@@ -285,10 +296,13 @@
             display: none;
         }
 
-        @@media (min-width: 480px) {
-            .topbar-user-name {
-                display: block;
-            }
+        @media (min-width: 480px) {
+            .topbar-user-name
+
+        {
+            display: block;
+        }
+
         }
 
         .sidebar-close {
@@ -350,12 +364,14 @@
             left: 0;
         }
 
-        @@media (max-width: 768px) {
-            .sidebar-close {
-                display: flex;
-            }
+        @media (max-width: 768px) {
+            .sidebar-close
+
+        {
+            display: flex;
         }
-    </style>
+
+        }</style>
 
     @await RenderSectionAsync("Scripts", required: false)
 </body>
